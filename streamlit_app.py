@@ -42,5 +42,14 @@ if st.button("🧮 Lancer le traitement") and fichier_bdd and fichier_nouveaux a
     st.subheader("👥 Doublons détectés")
     st.dataframe(doublons)
 
-    st.download_button("📤 Télécharger les doublons", data=BytesIO(doublons.to_excel(index=False, engine='openpyxl')), file_name="doublons.xlsx")
-    st.download_button("📤 Télécharger la base mise à jour", data=BytesIO(maj.to_excel(index=False, engine='openpyxl')), file_name="Modele-Particuliers-MAJ.xlsx")
+    # Exporter les doublons
+    buffer_doublons = BytesIO()
+    doublons.to_excel(buffer_doublons, index=False, engine='openpyxl')
+    buffer_doublons.seek(0)
+    st.download_button("📤 Télécharger les doublons", data=buffer_doublons, file_name="doublons.xlsx")
+
+    # Exporter la base mise à jour
+    buffer_maj = BytesIO()
+    maj.to_excel(buffer_maj, index=False, engine='openpyxl')
+    buffer_maj.seek(0)
+    st.download_button("📤 Télécharger la base mise à jour", data=buffer_maj, file_name="Modele-Particuliers-MAJ.xlsx")
