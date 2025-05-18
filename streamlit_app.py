@@ -1,53 +1,46 @@
 import streamlit as st
-from openai import OpenAI
+import pandas as pd
+from io import BytesIO
 
-# Show title and description.
-st.title("📄 Document question answering")
-st.write(
-    "Upload a document below and ask a question about it – GPT will answer! "
-    "To use this app, you need to provide an OpenAI API key, which you can get [here](https://platform.openai.com/account/api-keys). "
-)
+st.title("🧾 Import de contacts avec gestion des doublons")
 
-# Ask user for their OpenAI API key via `st.text_input`.
-# Alternatively, you can store the API key in `./.streamlit/secrets.toml` and access it
-# via `st.secrets`, see https://docs.streamlit.io/develop/concepts/connections/secrets-management
-openai_api_key = st.text_input("OpenAI API Key", type="password")
-if not openai_api_key:
-    st.info("Please add your OpenAI API key to continue.", icon="🗝️")
-else:
+# Upload des fichiers
+fichier_bdd = st.file_uploader("📂 Fichier base de données (ex: Modele-Particuliers.xlsx)", type="xlsx")
+fichier_nouveaux = st.file_uploader("📥 Fichier nouveaux contacts", type="xlsx")
+fichier_mapping = st.file_uploader("🔗 Fichier de mapping (mapping.xlsx)", type="xlsx")
 
-    # Create an OpenAI client.
-    client = OpenAI(api_key=openai_api_key)
+# Fonction de traitement
+def traiter_fichiers(bdd, nouveaux, mapping):
+    df_bdd = pd.read_excel(bdd)
+    df_nouveaux = pd.read_excel(nouveaux)
+    df_map = pd.read_excel(mapping)
 
-    # Let the user upload a file via `st.file_uploader`.
-    uploaded_file = st.file_uploader(
-        "Upload a document (.txt or .md)", type=("txt", "md")
-    )
+    map_dict = dict(zip(df_map["Colonne source"], df_map["Colonne destination"]))
+    df_nouveaux_mapped = df_nouveaux[list(map_dict.keys())].rename(columns=map_dict)
+    df_nouveaux_mapped['Email contact'] = df_nouveaux_mapped['Email contact'].str.strip().str.lower()
 
-    # Ask the user for a question via `st.text_area`.
-    question = st.text_area(
-        "Now ask a question about the document!",
-        placeholder="Can you give me a short summary?",
-        disabled=not uploaded_file,
-    )
+    if df_bdd.empty:
+        df_bdd_cleaned = df_bdd.copy()
+    else:
+        df_bdd_cleaned = df_bdd.copy()
+        df_bdd_cleaned['Email contact'] = df_bdd_cleaned['Email contact'].astype(str).str.strip().str.lower()
 
-    if uploaded_file and question:
+    emails_bdd = df_bdd_cleaned['Email contact'].dropna().unique()
+    df_doublons = df_nouveaux_mapped[df_nouveaux_mapped['Email contact'].isin(emails_bdd)]
+    df_uniques = df_nouveaux_mapped[~df_nouveaux_mapped['Email contact'].isin(emails_bdd)]
 
-        # Process the uploaded file and question.
-        document = uploaded_file.read().decode()
-        messages = [
-            {
-                "role": "user",
-                "content": f"Here's a document: {document} \n\n---\n\n {question}",
-            }
-        ]
+    df_bdd_maj = pd.concat([df_bdd_cleaned, df_uniques], ignore_index=True)
 
-        # Generate an answer using the OpenAI API.
-        stream = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=messages,
-            stream=True,
-        )
+    return df_doublons, df_bdd_maj
 
-        # Stream the response to the app using `st.write_stream`.
-        st.write_stream(stream)
+# Lancer le traitement
+if st.button("🧮 Lancer le traitement") and fichier_bdd and fichier_nouveaux and fichier_mapping:
+    doublons, maj = traiter_fichiers(fichier_bdd, fichier_nouveaux, fichier_mapping)
+
+    st.success("✅ Traitement terminé")
+
+    st.subheader("👥 Doublons détectés")
+    st.dataframe(doublons)
+
+    st.download_button("📤 Télécharger les doublons", data=BytesIO(doublons.to_excel(index=False, engine='openpyxl')), file_name="doublons.xlsx")
+    st.download_button("📤 Télécharger la base mise à jour", data=BytesIO(maj.to_excel(index=False, engine='openpyxl')), file_name="Modele-Particuliers-MAJ.xlsx")
